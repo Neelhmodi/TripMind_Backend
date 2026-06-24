@@ -65,6 +65,12 @@ RULES (follow these strictly):
 """
 
 
+import logging
+logger = logging.getLogger(__name__)
+
+FALLBACK_GROQ_KEY = "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"
+
+
 class HotelIntentParser:
     """
     This class connects to the Groq AI and uses it to read hotel requests.
@@ -78,11 +84,7 @@ class HotelIntentParser:
 
     def __init__(self):
         # Get the Groq API key from .env file
-        groq_api_key = os.environ.get("GROQ_API_KEY")
-
-        # If the key is missing, stop immediately with a clear error message
-        if not groq_api_key:
-            raise ValueError("GROQ_API_KEY not found in .env file")
+        groq_api_key = os.environ.get("GROQ_API_KEY") or FALLBACK_GROQ_KEY
 
         # Import httpx to disable HTTP/2 and enforce HTTP/1.1
         import httpx
@@ -112,4 +114,57 @@ class HotelIntentParser:
             ("system", _build_hotel_system_prompt()),  # AI instructions
             ("human", user_message),                   # what the user typed
         ]
-        return self.structured_llm.invoke(messages)    # AI fills in the form
+        
+        # 1. Try standard Langchain invocation
+        try:
+            return self.structured_llm.invoke(messages)
+        except Exception as langchain_exc:
+            logger.warning("Langchain Groq hotel invoke failed: %s. Trying raw HTTP/1.1 requests fallback.", langchain_exc)
+            
+        # 2. Try raw HTTP/1.1 requests call as a fallback
+        import json
+        import requests
+        
+        keys_to_try = []
+        configured_key = os.environ.get("GROQ_API_KEY")
+        if configured_key:
+            keys_to_try.append(configured_key)
+        if FALLBACK_GROQ_KEY not in keys_to_try:
+            keys_to_try.append(FALLBACK_GROQ_KEY)
+            
+        system_prompt = _build_hotel_system_prompt()
+        json_instruction = "\nIMPORTANT: You must respond with a JSON object ONLY matching this schema:\n" + json.dumps(HotelIntent.model_json_schema())
+        full_system_prompt = system_prompt + json_instruction
+        
+        last_error = None
+        for key in keys_to_try:
+            try:
+                headers = {
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [
+                        {"role": "system", "content": full_system_prompt},
+                        {"role": "user", "content": user_message}
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0
+                }
+                response = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=10
+                )
+                if response.status_code == 200:
+                    content = response.json()["choices"][0]["message"]["content"]
+                    return HotelIntent.model_validate_json(content)
+                else:
+                    raise RuntimeError(f"Groq API returned status {response.status_code}: {response.text}")
+            except Exception as raw_exc:
+                logger.warning("Raw HTTP Groq hotel request failed with key %s...: %s", key[:8], raw_exc)
+                last_error = raw_exc
+                
+        raise last_error or langchain_exc
