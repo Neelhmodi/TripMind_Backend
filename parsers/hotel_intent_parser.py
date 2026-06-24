@@ -84,11 +84,15 @@ class HotelIntentParser:
         if not groq_api_key:
             raise ValueError("GROQ_API_KEY not found in .env file")
 
+        # Import httpx to disable HTTP/2 and enforce HTTP/1.1
+        import httpx
+
         # Connect to the Groq AI model
         llm = ChatGroq(
             model="llama-3.3-70b-versatile",
             temperature=0,           # 0 = consistent answers, no randomness
             api_key=groq_api_key,
+            http_client=httpx.Client(http2=False),
         )
 
         # Tell the AI to always return a HotelIntent object (structured output)

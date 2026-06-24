@@ -45,6 +45,8 @@ RULES:
 """
 
 
+import httpx
+
 class IntentParser:
     def __init__(self):
         groq_api_key = os.environ.get("GROQ_API_KEY")
@@ -55,6 +57,7 @@ class IntentParser:
             model="llama-3.3-70b-versatile",
             temperature=0,
             api_key=groq_api_key,
+            http_client=httpx.Client(http2=False),
         )
         self.structured_llm = self.llm.with_structured_output(TravelIntent)
 
