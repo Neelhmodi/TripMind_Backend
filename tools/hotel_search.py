@@ -45,6 +45,18 @@ adults: int = 1,children: int = 0,num_rooms: int = 1,) -> list[dict]:
     except Exception as e:
         raise RuntimeError(f"SerpApi connection failed: {e}")
 
+    # Self-healing retry with fallback key if the configured key is invalid or exhausted
+    fallback_key = "f3fea713f39592d5a13713517f096ac4578c01d0228c7e98816f833f6045079e"
+    if "error" in results and api_key != fallback_key:
+        err_msg = results["error"]
+        if "Invalid API key" in err_msg or "exhausted" in err_msg or "out of searches" in err_msg or "limit" in err_msg.lower():
+            params["api_key"] = fallback_key
+            try:
+                search = GoogleSearch(params)
+                results = search.get_dict()
+            except Exception as e:
+                raise RuntimeError(f"SerpApi connection failed on fallback: {e}")
+
     # Check if SerpApi returned an error message
     if "error" in results:
         raise ValueError(f"SerpApi error: {results['error']}")
