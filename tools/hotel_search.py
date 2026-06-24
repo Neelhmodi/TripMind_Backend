@@ -43,13 +43,11 @@ adults: int = 1,children: int = 0,num_rooms: int = 1,) -> list[dict]:
         search = GoogleSearch(params)
         results = search.get_dict()      # returns a Python dictionary
     except Exception as e:
-        print(f"[Hotel Search Error] {e}")
-        return []   # return empty list if API call fails
+        raise RuntimeError(f"SerpApi connection failed: {e}")
 
     # Check if SerpApi returned an error message
     if "error" in results:
-        print(f"[Hotel Search Error] {results['error']}")
-        return []
+        raise ValueError(f"SerpApi error: {results['error']}")
 
     # SerpApi stores hotel results under "properties" key
     raw_hotels = results.get("properties", [])

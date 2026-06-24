@@ -43,12 +43,10 @@ def search_flights(
         search = GoogleSearch(params)
         results = search.get_dict()
     except Exception as e:
-        print(f"[SerpApi Error] {e}")
-        return []
+        raise RuntimeError(f"SerpApi connection failed: {e}")
 
     if "error" in results:
-        print(f"[SerpApi Error] {results['error']}")
-        return []
+        raise ValueError(f"SerpApi error: {results['error']}")
 
     raw_flights = results.get("best_flights", []) + results.get("other_flights", [])
     return [_clean_flight(f) for f in raw_flights] if raw_flights else []
