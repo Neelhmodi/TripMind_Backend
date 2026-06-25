@@ -12,11 +12,15 @@ import time
 import json
 import base64
 import logging
+import smtplib
+import re
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, EmailStr
-from services.db import users_collection
+from pydantic import BaseModel, Field, field_validator
+from services.db import users_collection, subscribers_collection
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth")
@@ -51,6 +55,25 @@ class UserProfile(BaseModel):
     name: str
     email: str
     created_at: float
+
+
+class SubscribeRequest(BaseModel):
+    email: str = Field(..., description="Email to subscribe to newsletter")
+
+    @field_validator("email", mode="after")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        email_regex = r"^[^\s@]+@[^\s@]+\.[^\s@]+$"
+        v_clean = v.strip().lower()
+        if not re.match(email_regex, v_clean):
+            raise ValueError("Invalid email address format")
+        return v_clean
+
+
+class SubscribeResponse(BaseModel):
+    message: str
+    email: str
+    email_sent: bool
 
 
 # ── Token helpers (simple HMAC-based JWT-like token) ──────────────────────────
@@ -161,3 +184,104 @@ async def logout() -> dict:
     is done client-side by deleting the token from localStorage.
     """
     return {"message": "Logged out successfully. Please delete your token client-side."}
+
+
+def send_confirmation_email(recipient_email: str) -> bool:
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_port = os.environ.get("SMTP_PORT")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASSWORD")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user or "noreply@tripmind.ai")
+
+    if not smtp_host or not smtp_user or not smtp_pass:
+        logger.warning(
+            "SMTP configuration missing in environment. Email simulation logged: "
+            "Welcome/newsletter confirmation email for %s", recipient_email
+        )
+        return False
+
+    try:
+        port = int(smtp_port) if smtp_port else 587
+        
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Welcome to TripMind AI Newsletter!"
+        msg["From"] = smtp_from
+        msg["To"] = recipient_email
+
+        text_content = (
+            "Thank you for subscribing to TripMind AI Newsletter!\n\n"
+            "You will now receive smart travel deal analytics, pricing insights, and "
+            "recommendations directly in your inbox.\n\n"
+            "Best regards,\nThe TripMind Team"
+        )
+
+        html_content = """
+        <html>
+          <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <div style="text-align: center; border-bottom: 2px solid #38bdf8; padding-bottom: 20px;">
+              <h2 style="color: #0770e3; margin: 0;">TripMind AI</h2>
+              <p style="margin: 5px 0 0 0; color: #64748b; font-size: 14px;">Your AI-Powered Travel Assistant</p>
+            </div>
+            <div style="padding: 20px 0;">
+              <p><strong>Hi there!</strong></p>
+              <p>Thank you for subscribing to the <strong>TripMind AI Newsletter</strong>.</p>
+              <p>You'll now be the first to know about smart flight deal analytics, premium hotel insights, and customized travel updates curated by our AI agents.</p>
+              <div style="margin: 30px 0; text-align: center;">
+                <a href="#" style="background-color: #0770e3; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Explore TripMind</a>
+              </div>
+              <p style="font-size: 13px; color: #64748b;">If you did not request this subscription, please ignore this email.</p>
+            </div>
+            <div style="border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; font-size: 12px; color: #94a3b8;">
+              &copy; 2026 TripMind AI · Powered by Neuronet Systems Pvt. Ltd.
+            </div>
+          </body>
+        </html>
+        """
+
+        msg.attach(MIMEText(text_content, "plain"))
+        msg.attach(MIMEText(html_content, "html"))
+
+        # Connect to SMTP server (TLS)
+        server = smtplib.SMTP(smtp_host, port, timeout=10)
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(smtp_from, recipient_email, msg.as_string())
+        server.quit()
+        
+        logger.info("Successfully sent welcome email to %s via SMTP", recipient_email)
+        return True
+    except Exception as e:
+        logger.error("Failed to send subscription email to %s: %s", recipient_email, e)
+        return False
+
+
+@router.post("/subscribe", response_model=SubscribeResponse, summary="Subscribe to newsletter")
+async def subscribe_newsletter(body: SubscribeRequest) -> SubscribeResponse:
+    """Subscribe email to the newsletter and send a welcome email."""
+    email = body.email.lower().strip()
+    
+    # Save to MongoDB subscribers collection
+    try:
+        subscribers_collection.update_one(
+            {"email": email},
+            {"$set": {"email": email, "subscribed_at": time.time()}},
+            upsert=True
+        )
+        logger.info("Email registered in subscribers database: %s", email)
+    except Exception as e:
+        logger.error("Database error saving subscriber %s: %s", email, e)
+        # We can still proceed to try and send the email even if DB fails
+
+    # Send confirmation email
+    email_sent = send_confirmation_email(email)
+    
+    if email_sent:
+        message = "Successfully subscribed! A welcome email has been sent to you."
+    else:
+        message = "Successfully subscribed! (Welcome email simulation logged; please configure SMTP in backend .env to send real emails)."
+
+    return SubscribeResponse(
+        message=message,
+        email=email,
+        email_sent=email_sent
+    )

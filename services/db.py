@@ -28,6 +28,7 @@ except Exception as e:
 
 db = client[MONGODB_DB]
 users_collection = db["users"]
+subscribers_collection = db["subscribers"]
 
 # Verify/Create unique index on email to enforce uniqueness at the database layer
 try:
@@ -35,3 +36,9 @@ try:
     logger.info("Unique index on users 'email' verified/created successfully.")
 except Exception as e:
     logger.error("Failed to verify/create unique index on users 'email': %s", e)
+
+try:
+    subscribers_collection.create_index("email", unique=True)
+    logger.info("Unique index on subscribers 'email' verified/created successfully.")
+except Exception as e:
+    logger.error("Failed to verify/create unique index on subscribers 'email': %s", e)
