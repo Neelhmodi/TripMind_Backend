@@ -18,7 +18,9 @@ adults: int = 1,children: int = 0,num_rooms: int = 1,) -> list[dict]:
     # Get the SerpApi key from .env
     api_key = os.environ.get("SERPAPI_KEY")
     if not api_key:
-        raise ValueError("SERPAPI_KEY not found in .env file")
+        import logging
+        logging.getLogger(__name__).warning("SERPAPI_KEY not found in environment. Falling back to default key.")
+        api_key = "f3fea713f39592d5a13713517f096ac4578c01d0228c7e98816f833f6045079e"
 
     # Import the SerpApi library
     from serpapi import GoogleSearch
