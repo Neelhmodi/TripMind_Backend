@@ -15,7 +15,7 @@ def search_flights(
     if not api_key:
         import logging
         logging.getLogger(__name__).warning("SERPAPI_KEY not found in environment. Falling back to default key.")
-        api_key = "f3fea713f39592d5a13713517f096ac4578c01d0228c7e98816f833f6045079e"
+        api_key = "c4246b53f24b62686ce72487e23845342f3ec25dc691fa6e8057c672d959ddce"
 
     try:
         from serpapi import GoogleSearch
@@ -45,7 +45,7 @@ def search_flights(
         raise RuntimeError(f"SerpApi connection failed: {e}")
 
     # Self-healing retry with fallback key if the configured key is invalid or exhausted
-    fallback_key = "f3fea713f39592d5a13713517f096ac4578c01d0228c7e98816f833f6045079e"
+    fallback_key = "c4246b53f24b62686ce72487e23845342f3ec25dc691fa6e8057c672d959ddce"
     if "error" in results and api_key != fallback_key:
         err_msg = results["error"]
         if "Invalid API key" in err_msg or "exhausted" in err_msg or "out of searches" in err_msg or "limit" in err_msg.lower():
