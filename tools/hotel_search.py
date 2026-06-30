@@ -63,11 +63,17 @@ adults: int = 1,children: int = 0,num_rooms: int = 1,) -> list[dict]:
     if "error" in results:
         raise ValueError(f"SerpApi error: {results['error']}")
 
+    google_url = results.get("search_metadata", {}).get("google_url", "https://www.google.com/travel/hotels")
     # SerpApi stores hotel results under "properties" key
     raw_hotels = results.get("properties", [])
 
     # Clean each hotel result and return the list
-    return [_clean_hotel(h) for h in raw_hotels]
+    clean_hotels = []
+    for h in raw_hotels:
+        cleaned = _clean_hotel(h)
+        cleaned["google_search_url"] = google_url
+        clean_hotels.append(cleaned)
+    return clean_hotels
 
 
 def _clean_hotel(raw: dict) -> dict:

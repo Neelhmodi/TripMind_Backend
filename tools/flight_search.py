@@ -59,8 +59,18 @@ def search_flights(
     if "error" in results:
         raise ValueError(f"SerpApi error: {results['error']}")
 
+    google_url = results.get("search_metadata", {}).get("google_url", "https://www.google.com/travel/flights")
     raw_flights = results.get("best_flights", []) + results.get("other_flights", [])
-    return [_clean_flight(f) for f in raw_flights] if raw_flights else []
+    
+    if not raw_flights:
+        return []
+        
+    clean_flights = []
+    for f in raw_flights:
+        cleaned = _clean_flight(f)
+        cleaned["google_search_url"] = google_url
+        clean_flights.append(cleaned)
+    return clean_flights
 
 
 def _clean_flight(raw: dict) -> dict:

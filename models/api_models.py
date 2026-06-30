@@ -64,6 +64,8 @@ class FlightResult(BaseModel):
     price_inr: Optional[int] = None
     layovers: Optional[List[dict]] = None
 
+    google_search_url: Optional[str] = None
+
     class Config:
         extra = "ignore"
 
@@ -165,6 +167,8 @@ class HotelResult(BaseModel):
     booking_link: str = ""
 
     booking_links: dict = {}
+
+    google_search_url: Optional[str] = None
 
     class Config:
         extra = "ignore"
